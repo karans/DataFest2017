@@ -6,13 +6,14 @@ from mpl_toolkits.mplot3d import Axes3D
 from sklearn.cluster import *
 from sklearn.utils import shuffle
 from dateutil import parser
-from multiprocessing import Pool
+from multiprocessing import Process, Queue
 from multiprocessing.dummy import Pool as ThreadPool 
 
 import matplotlib.pyplot as plt
 import numpy as np
 import datetime
 import multiprocessing
+import math
 
 def parseData(inputData):
 
@@ -44,13 +45,11 @@ def parseData(inputData):
 		newColNames = [str(m)+ '_' + str(n) for m,n in zip(encodedWordArray,possibleValues)]
 		labels.extend(newColNames)
 
-	parsedDF = []
+	# parsedDF = []
 	#adding a column at a time makes it easier to skip messy data
-	def generateDF(data):
+	def generateDF(data, outQueue):
+		parsedDF = []
 		for i in range(0, len(data)): 
-
-			if len(parsedDF)%100 == 0:
-				print(len(parsedDF))
 
 			example = []
 			#check for bad values as we go along, if there are any, just throw the row away
@@ -108,13 +107,27 @@ def parseData(inputData):
 				example.extend(oneHotArray)
 
 			parsedDF.append(example)
+		outQueue.put(parsedDF)
 
+	parsedDFs = Queue()
 	threads = multiprocessing.cpu_count()
-	pool = ThreadPool(4)
-	dfPieces = [data[i:i + int(len(data)/threads)] for i in range(0, len(data), int(len(data)/threads))]
-	results = pool.map(generateDF, dfPieces)
+	chunkSize = int(math.ceil(len(data) / float(threads)))
 
-	parsedDF = pd.DataFrame(parsedDF, columns = labels)
+	processes = []
+
+	for i in range(threads):
+		p = Process(target=generateDF,args=(data[chunkSize * i:chunkSize * (i + 1)], parsedDFs))
+		processes.append(p)
+		p.start()
+
+	returnDF = []
+	for i in range(threads):
+		returnDF.extend(parsedDFs.get())
+
+	for process in processes:
+		process.join()
+
+	parsedDF = pd.DataFrame(returnDF, columns = labels)
 	parsedDF.dropna()
 	return parsedDF
 
