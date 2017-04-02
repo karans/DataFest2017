@@ -1,10 +1,13 @@
 import pandas as pd
 from sklearn.ensemble import *
-from sklearn import preprocessing, svm, decomposition
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score, roc_auc_score
-from mpl_toolkits.mplot3d import Axes3D
 from sklearn.cluster import *
 from sklearn.utils import shuffle
+from sklearn import preprocessing, svm, decomposition
+
+from mpl_toolkits.mplot3d import Axes3D
 from dateutil import parser
 from multiprocessing import Process, Queue
 from multiprocessing.dummy import Pool as ThreadPool 
@@ -45,7 +48,6 @@ def parseData(inputData):
 		newColNames = [str(m)+ '_' + str(n) for m,n in zip(encodedWordArray,possibleValues)]
 		labels.extend(newColNames)
 
-	# parsedDF = []
 	#adding a column at a time makes it easier to skip messy data
 	def generateDF(data, outQueue):
 		parsedDF = []
@@ -129,19 +131,79 @@ def parseData(inputData):
 
 	parsedDF = pd.DataFrame(returnDF, columns = labels)
 	parsedDF.dropna()
-	return parsedDF
+	return (parsedDF, labels)
 
+def testModels(X,Y):
+	dataSplit = int(len(X)*.8)
+
+	rf = RandomForestClassifier(50)
+	rf.fit(X[:dataSplit],Y[:dataSplit])
+	predictionsRF = rf.predict(X[dataSplit:])
+
+	print('rf',accuracy_score(Y[dataSplit:], predictionsRF))
+	print('rf',roc_auc_score(Y[dataSplit:], predictionsRF))
+
+	mlp = MLPClassifier(hidden_layer_sizes=(150,100), max_iter = 500)
+	mlp.fit(X[:dataSplit],Y[:dataSplit])
+	predictionsMLP = mlp.predict(X[dataSplit:])
+
+	print('mlp',accuracy_score(Y[dataSplit:], predictionsMLP))
+	print('mlp',roc_auc_score(Y[dataSplit:], predictionsMLP))
+
+	knn = KNeighborsClassifier(n_neighbors = 5)
+	knn.fit(X[:dataSplit],Y[:dataSplit])
+	predictionsKNN = knn.predict(X[dataSplit:])
+
+	print('knn',accuracy_score(Y[dataSplit:], predictionsKNN))
+	print('knn',roc_auc_score(Y[dataSplit:], predictionsKNN))
+
+	sv = svm.SVC()
+	sv.fit(X[:dataSplit],Y[:dataSplit])
+	predictionsSVM = sv.predict(X[dataSplit:])
+
+	print('svm',accuracy_score(Y[dataSplit:], predictionsSVM))
+	print('svm',roc_auc_score(Y[dataSplit:], predictionsSVM))
+
+def testPCAVariance(X_raw):
+	for i in [1,2,5,10,15,25,50]:
+		pca = decomposition.PCA(n_components=i)
+		pca.fit(X_raw)
+		print('explained variance with',i,'components:',sum(pca.explained_variance_ratio_))
+
+def plotPCA3(X, Y):
+	if len(X[0]) != 3:
+		print('Only applys to 3D graphs. Make sure you have 3 principle components.')
+		return
+	fig = plt.figure()
+	ax = fig.add_subplot(111, projection='3d')
+
+	Y = Y.tolist()
+
+	#adding points one by one based on label is very very slow, this works better
+	indicesPos = [i for i, y in enumerate(Y) if y == 1]
+	indicesNeg= [i for i, y in enumerate(Y) if y == 1]
+
+	posData = X[indicesPos]
+	negData = X[indicesNeg]
+
+	ax.set_title('PCA Components Visualized')
+	ax.scatter(posData[:,0], posData[:,1], posData[:,2], c = 'r')
+	ax.scatter(negData[:,0], negData[:,1], negData[:,2], c = 'b')
+
+	ax.set_xlabel('Component 1')
+	ax.set_ylabel('Component 2')
+	ax.set_zlabel('Component 3')
+
+	plt.show()
 
 # df = pd.read_csv('ASADataFest2017Data/data.txt', sep='\t')
 df = pd.read_csv('combined_small.txt', sep='\t')
 
-#remove rows with null values for now
 df = df.dropna()
 df = shuffle(df)
 
 df = df.reset_index()
-X_raw = parseData(df)
-# print(X_raw)
+X_raw, finalLabels = parseData(df)
 Y = X_raw['is_booking'] #getLabels
 
 X_raw = X_raw.drop('is_booking',1)
@@ -152,34 +214,5 @@ pca = decomposition.PCA(n_components=3)
 pca.fit(X_raw)
 X = pca.transform(X_raw)
 
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-
-Y = Y.tolist()
-
-ax.scatter(X[:,0], X[:,1], X[:,2])
-# for i in range(0, len(X)):
-# 	# print(i)
-# 	if Y[i] == 1:
-# 		ax.scatter(X[i,0], X[i,1], X[i,2], c = 'r')
-# 	else:
-# 		ax.scatter(X[i,0], X[i,1], X[i,2], c = 'b')
-
-ax.set_xlabel('Component 1')
-ax.set_ylabel('Component 2')
-ax.set_zlabel('Component 3')
-
-plt.show()
-
-# dataSplit = int(len(X)*.8)
-
-# rf = AffinityPropagation(preference=-50)
-# rf.fit(X[:dataSplit],Y[:dataSplit])
-# predictions = rf.predict(X[dataSplit:])
-
-# print(accuracy_score(Y[dataSplit:], predictions))
-# print(roc_auc_score(Y[dataSplit:], predictions))
-
-
-
-
+plotPCA3(X,Y)
+testModels(X,Y)
