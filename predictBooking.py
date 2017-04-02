@@ -6,9 +6,13 @@ from mpl_toolkits.mplot3d import Axes3D
 from sklearn.cluster import *
 from sklearn.utils import shuffle
 from dateutil import parser
+from multiprocessing import Pool
+from multiprocessing.dummy import Pool as ThreadPool 
+
 import matplotlib.pyplot as plt
 import numpy as np
 import datetime
+import multiprocessing
 
 def parseData(inputData):
 
@@ -42,63 +46,73 @@ def parseData(inputData):
 
 	parsedDF = []
 	#adding a column at a time makes it easier to skip messy data
-	for i in range(0, len(data)): 
-		example = []
-		#check for bad values as we go along, if there are any, just throw the row away
-		#need to also add the values in the same order as our labels
+	def generateDF(data):
+		for i in range(0, len(data)): 
 
-		try:
-			searchDate = parser.parse(data[i][list(inputData).index('date_time')])
-		except:
-			print('search date parsing error in example', i, '.Skipping this example.')
-			continue
-		example.append(searchDate.day)
-		example.append(searchDate.month)
-		example.append(searchDate.year)
-		example.append(searchDate.hour)
-		example.append(searchDate.minute)
-		example.append(searchDate.second)
+			if len(parsedDF)%100 == 0:
+				print(len(parsedDF))
 
-		try:
-			checkInDate = parser.parse(data[i][list(inputData).index('srch_ci')])
-		except:
-			print('check in date parsing error in example', i, '.Skipping this example.')
-			continue
-		example.append(checkInDate.day)
-		example.append(checkInDate.month)
-		example.append(checkInDate.year)
+			example = []
+			#check for bad values as we go along, if there are any, just throw the row away
+			#need to also add the values in the same order as our labels
 
-		try:
-			checkOutDate = parser.parse(data[i][list(inputData).index('srch_co')])
-		except:
-			print('check out date parsing error in example', i, '.Skipping this example.')
-			continue
-		example.append(checkOutDate.day)
-		example.append(checkOutDate.month)
-		example.append(checkOutDate.year)
+			try:
+				searchDate = parser.parse(data[i][list(inputData).index('date_time')])
+			except:
+				print('search date parsing error in example', i, '.Skipping this example.')
+				continue
+			example.append(searchDate.day)
+			example.append(searchDate.month)
+			example.append(searchDate.year)
+			example.append(searchDate.hour)
+			example.append(searchDate.minute)
+			example.append(searchDate.second)
+
+			try:
+				checkInDate = parser.parse(data[i][list(inputData).index('srch_ci')])
+			except:
+				print('check in date parsing error in example', i, '.Skipping this example.')
+				continue
+			example.append(checkInDate.day)
+			example.append(checkInDate.month)
+			example.append(checkInDate.year)
+
+			try:
+				checkOutDate = parser.parse(data[i][list(inputData).index('srch_co')])
+			except:
+				print('check out date parsing error in example', i, '.Skipping this example.')
+				continue
+			example.append(checkOutDate.day)
+			example.append(checkOutDate.month)
+			example.append(checkOutDate.year)
 
 
-		#access encoded indicies and use the index of each encoded attribute as the value
-		for iterator,columns in enumerate(encoded):
-			example.append(encodedValues[iterator].index(data[i][list(inputData).index(columns)]))
+			#access encoded indicies and use the index of each encoded attribute as the value
+			for iterator,columns in enumerate(encoded):
+				example.append(encodedValues[iterator].index(data[i][list(inputData).index(columns)]))
 
-		#add the direct attributes
-		for columns in direct:
-			example.append(data[i][list(inputData).index(columns)])
+			#add the direct attributes
+			for columns in direct:
+				example.append(data[i][list(inputData).index(columns)])
 
-		#add the popular attributes
-		for columns in popularAttributes:
-			example.append(data[i][list(inputData).index(columns)])
+			#add the popular attributes
+			for columns in popularAttributes:
+				example.append(data[i][list(inputData).index(columns)])
 
-		#add the one hot attributes
-		for iterator,columns in enumerate(oneHotEncoded):
-			#intialize the array that we will extend to our example
-			oneHotArray = np.zeros(len(oneHotEncodedValues[iterator]))
-			#use the position in oneHotEncodedValues and the value we have for the oneHotEncodedVariable as the index that we set
-			oneHotArray[oneHotEncodedValues[iterator].index(data[i][list(inputData).index(columns)])] = 1			
-			example.extend(oneHotArray)
+			#add the one hot attributes
+			for iterator,columns in enumerate(oneHotEncoded):
+				#intialize the array that we will extend to our example
+				oneHotArray = np.zeros(len(oneHotEncodedValues[iterator]))
+				#use the position in oneHotEncodedValues and the value we have for the oneHotEncodedVariable as the index that we set
+				oneHotArray[oneHotEncodedValues[iterator].index(data[i][list(inputData).index(columns)])] = 1			
+				example.extend(oneHotArray)
 
-		parsedDF.append(example)
+			parsedDF.append(example)
+
+	threads = multiprocessing.cpu_count()
+	pool = ThreadPool(4)
+	dfPieces = [data[i:i + int(len(data)/threads)] for i in range(0, len(data), int(len(data)/threads))]
+	results = pool.map(generateDF, dfPieces)
 
 	parsedDF = pd.DataFrame(parsedDF, columns = labels)
 	parsedDF.dropna()
@@ -121,22 +135,22 @@ X_raw = X_raw.drop('is_booking',1)
 X_raw = pd.DataFrame(preprocessing.scale(X_raw))
 X = X_raw
 
-pca = decomposition.PCA(n_components=2)
+pca = decomposition.PCA(n_components=3)
 pca.fit(X_raw)
 X = pca.transform(X_raw)
 
 fig = plt.figure()
-ax = fig.add_subplot(111, projection='2d')
+ax = fig.add_subplot(111, projection='3d')
 
 Y = Y.tolist()
 
-# ax.scatter(X[:,0], X[:,1], X[:,2])
-for i in range(0, len(X)):
-	# print(i)
-	if Y[i] == 1:
-		ax.scatter(X[i,0], X[i,1], c = 'r')
-	else:
-		ax.scatter(X[i,0], X[i,1], c = 'b')
+ax.scatter(X[:,0], X[:,1], X[:,2])
+# for i in range(0, len(X)):
+# 	# print(i)
+# 	if Y[i] == 1:
+# 		ax.scatter(X[i,0], X[i,1], X[i,2], c = 'r')
+# 	else:
+# 		ax.scatter(X[i,0], X[i,1], X[i,2], c = 'b')
 
 ax.set_xlabel('Component 1')
 ax.set_ylabel('Component 2')
