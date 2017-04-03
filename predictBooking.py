@@ -214,5 +214,5 @@ pca = decomposition.PCA(n_components=3)
 pca.fit(X_raw)
 X = pca.transform(X_raw)
 
-plotPCA3(X,Y)
-testModels(X,Y)
+# plotPCA3(X,Y)
+# testModels(X,Y)
